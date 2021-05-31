@@ -6,7 +6,9 @@ const userSchema = new Schema({
     name: String,
     email: String,
     pass: String,
-    news: String
+    op: String,
+    news: String,
+    likedPosts: [String]
 })
 
 const user = mongoose.model('user', userSchema)
