@@ -19,6 +19,7 @@ mongoose.connect(
     console.log('Connected to the database!')
 )
 app.use(express.json())
+app.use('/uploads', express.static('uploads'))
 app.use(morgan('tiny'))
 app.use('/api', routes)
 
