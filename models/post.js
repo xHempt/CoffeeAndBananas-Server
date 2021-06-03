@@ -8,7 +8,8 @@ const postSchema = new Schema({
     headline: String,
     content: String,
     background: String,
-    likes: Number
+    likes: Number,
+    comments: []
 })
 
 const post = mongoose.model('post', postSchema)

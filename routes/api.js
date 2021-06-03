@@ -18,6 +18,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage })
 
+function escapeRegex(text) {
+    return text.replace(/[-[\]{}()*+?.,\\^&|#\s]/g, "\\$&")
+}
+
 router.get('/prevposts', async (req, res) => {
     try {
         await post.find({})
@@ -35,25 +39,76 @@ router.get('/prevposts', async (req, res) => {
 router.post('/post', upload.single('file'), async (req, res) => {
     const postInfo = JSON.parse(req.body.data)
 
-    const date = new Date()
-    const time = date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
-
-    const payload = {
-        category: postInfo.category,
-        date: time,
-        headline: postInfo.headline,
-        content: postInfo.content,
-        background: `uploads/${req.file.originalname}`,
-        likes: 1
+    async function actualPost() {
+        const date = new Date()
+        const time = date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+    
+        const payload = {
+            category: postInfo.category,
+            date: time,
+            headline: postInfo.headline,
+            content: postInfo.content,
+            background: `uploads/${req.file.originalname}`,
+            likes: 1,
+            comments: []
+        }
+        
+        const newPost = new post(payload)
+        
+        try {
+            await newPost.save()
+        } catch(err) {
+            console.log(err)
+        }
     }
-    
-    const newPost = new post(payload)
-    
-    try {
-        await newPost.save()
+
+    async function sendMail() {
+        await user.find({ news: true })
+        .then((data) => {
+            const users = data.splice('')
+            users.forEach((user) => {
+                let transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: {
+                        user: process.env.MAIL_FROM,
+                        pass: process.env.MAIL_PASS
+                    },
+                    tls: {
+                        rejectUnauthorized: false
+                    }
+                })
+                    
+                let mailOptions = {
+                    from: 'coffeeandbananas.blog10@gmail.com',
+                    to: user.email,
+                    subject: 'NEW POST ON "COFFEE AND BANANAS" BLOG',
+                    text: `Hi ${user.name}! David just posted a new post called "${postInfo.headline}" in "${postInfo.category}" category! Go check it out and thanks for signing up! ^^`
+                }
+            
+                transporter.sendMail(mailOptions, (err, data) => {
+                    if(err) {
+                        console.log('There was an error while trying to send emails', err)
+                    } else {
+                        console.log('Email sent to ', user.email, '!')
+                    }
+                })
+            })
+        })
+        .catch((err) => console.log(err))
+    }
+
+    if(postInfo.selectedDate === 'now') {
+        console.log('Instant post')
         res.send('Post added!')
-    } catch(err) {
-        console.log(err)
+        actualPost()
+        sendMail()
+    } else {
+        console.log('Planned post')
+        res.send('Post planned!')
+        setTimeout(() => {
+            actualPost()
+            sendMail()
+        }, postInfo.timeoutValue)
     }
 })
 
@@ -168,6 +223,31 @@ router.post('/like', async (req, res) => {
 
 })
 
+router.post('/addcomment', async (req, res) => {
+    const date = new Date()
+    const time = date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+
+    await user.findOne({ _id: req.body.userID })
+        .then((data) => {
+            const newComment = {
+                name: data.name,
+                date: time,
+                content: req.body.content
+            }
+            post.findOne({ _id: req.body.postID })
+                .then((data) => {
+                    data.comments.push(newComment)
+                    data.save()
+                    res.send('Comment added!')
+                })
+                .catch((err) => console.log(err))
+        })
+        .catch((err) => {
+            console.log(err)
+            res.json({ msg: 'login' })
+        })
+})
+
 router.post('/getpost', async (req, res) => {
     await post.findOne({ _id: req.body.id })
         .then((data) => res.send(data))
@@ -185,49 +265,6 @@ router.post('/getpostswithcat', async (req, res) => {
             .then((data) => res.send(data))
             .catch((err) => console.log(err))
     }
-})
-
-router.get('/search', async (req, res) => {
-    await post.find({})
-        .then((data) => {
-            res.send(data)
-        })
-        .catch((err) => console.log(err))
-})
-
-router.post('/sendmail', async (req, res) => {
-    await user.find({ news: true })
-        .then((data) => {
-            const users = data.splice('')
-            users.forEach((user) => {
-                let transporter = nodemailer.createTransport({
-                    service: 'gmail',
-                    auth: {
-                        user: process.env.MAIL_FROM,
-                        pass: process.env.MAIL_PASS
-                    },
-                    tls: {
-                        rejectUnauthorized: false
-                    }
-                })
-                    
-                let mailOptions = {
-                    from: 'coffeeandbananas.blog10@gmail.com',
-                    to: user.email,
-                    subject: 'NEW POST ON "COFFEE AND BANANAS" BLOG',
-                    text: `Hi ${user.name}! David just posted a new post called "${req.body.headline}" in "${req.body.category}" category! Go check it out and thanks for signing up! ^^`
-                }
-            
-                transporter.sendMail(mailOptions, (err, data) => {
-                    if(err) {
-                        console.log('There was an error while trying to send emails', err)
-                    } else {
-                        console.log('Email sent to ', user.email, '!')
-                    }
-                })
-            })
-        })
-        .catch((err) => console.log(err))
 })
 
 module.exports = router
